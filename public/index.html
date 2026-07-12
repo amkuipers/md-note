@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>md-note</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header>
+        <h1>md-note</h1>
+        <span id="save-indicator" title="save state">●</span>
+      </header>
+
+      <ul id="desktop-list"></ul>
+
+      <button id="new-desktop-btn" type="button" title="Create a new desktop">＋ New desktop</button>
+    </aside>
+
+    <main id="canvas-wrap">
+      <div id="menubar">
+        <input id="desk-name" type="text" spellcheck="false" autocomplete="off"
+          title="Desktop name — click to rename" />
+        <select id="desk-theme" title="Change theme"></select>
+        <span class="menubar-spacer"></span>
+        <button id="add-note-btn" type="button" title="Add a note">＋ Note</button>
+        <button id="add-desktop-btn" type="button" title="Create a new desktop">＋ Desktop</button>
+        <button id="del-desktop-btn" type="button" title="Delete this desktop">🗑</button>
+        <div class="menu" id="help-menu">
+          <button type="button" id="help-btn" title="Help">?</button>
+          <div class="dropdown" hidden>
+            <p><b>Double-click</b> the canvas (or ＋ Note) to add a note.</p>
+            <p><b>Drag</b> a note's top bar to move it. Drop it onto another note to <b>stack</b>.</p>
+            <p><b>Shift-drag</b> pulls a note out of its stack; click the <b>count badge</b> to unstack all.</p>
+            <p><b>Click</b> a note's body to edit markdown; click elsewhere to render.</p>
+            <p><b>Click</b> the desktop name to rename it; use the theme selector to relayout.</p>
+            <p>Notes are saved as <code>.md</code> files in the <code>data/</code> folder.</p>
+          </div>
+        </div>
+      </div>
+      <div id="canvas">
+        <div id="zones"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="vendor/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

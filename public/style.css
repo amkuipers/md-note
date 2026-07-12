@@ -1,0 +1,395 @@
+* { box-sizing: border-box; }
+
+:root {
+  --sidebar-bg: #1f2430;
+  --sidebar-fg: #d6dae3;
+  --sidebar-muted: #8a91a3;
+  --accent: #ffb84d;
+  --canvas-bg: #f2f0ea;
+  --zone-border: rgba(0, 0, 0, 0.10);
+  --zone-label: rgba(0, 0, 0, 0.28);
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- sidebar ---------- */
+
+#sidebar {
+  width: 230px;
+  flex: 0 0 auto;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  gap: 10px;
+}
+
+#sidebar header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+#sidebar h1 {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+#save-indicator {
+  font-size: 11px;
+  color: #4caf50;
+  transition: color 0.2s;
+}
+#save-indicator.dirty { color: var(--accent); }
+#save-indicator.error { color: #ef5350; }
+
+#desktop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+#desktop-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+#desktop-list li:hover { background: rgba(255, 255, 255, 0.07); }
+#desktop-list li.active { background: rgba(255, 255, 255, 0.14); }
+
+#desktop-list .desk-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#desktop-list .desk-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+
+#desktop-list .desk-theme {
+  font-size: 10.5px;
+  color: var(--sidebar-muted);
+  letter-spacing: 0.3px;
+}
+
+#desktop-list .desk-del {
+  border: none;
+  background: none;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  visibility: hidden;
+}
+#desktop-list li:hover .desk-del { visibility: visible; }
+#desktop-list .desk-del:hover { color: #ef5350; }
+
+#new-desktop-btn {
+  background: none;
+  border: 1px dashed var(--sidebar-muted);
+  color: var(--sidebar-fg);
+  border-radius: 7px;
+  padding: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+#new-desktop-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---------- menu bar ---------- */
+
+#menubar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  z-index: 1; /* above #canvas, which is its own stacking context */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+#desk-name {
+  border: 1px solid transparent;
+  background: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: #2b2f3a;
+  padding: 4px 8px;
+  border-radius: 6px;
+  width: 240px;
+  min-width: 80px;
+}
+#desk-name:hover { border-color: rgba(0, 0, 0, 0.15); }
+#desk-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #fff;
+}
+
+#desk-theme {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.menubar-spacer { flex: 1; }
+
+#menubar > button {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2b2f3a;
+}
+#menubar > button:hover { border-color: var(--accent); background: #fff8ec; }
+#del-desktop-btn:hover { border-color: #ef5350; background: #fdecec; }
+
+.menu { position: relative; }
+.menu > button {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #2b2f3a;
+}
+.menu > button:hover { border-color: var(--accent); background: #fff8ec; }
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 38px;
+  width: 290px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #444;
+}
+.dropdown p { margin: 6px 0; }
+.dropdown code {
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* ---------- canvas ---------- */
+
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#canvas {
+  position: absolute;
+  inset: 46px 0 0 0;
+  z-index: 0; /* stacking context: note z-indexes never escape above the menu bar */
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+#zones {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.zone {
+  position: absolute;
+  border: 1.5px dashed var(--zone-border);
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+.zone.active { background: rgba(255, 184, 77, 0.12); }
+
+.zone-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--zone-label);
+  user-select: none;
+}
+
+/* ---------- notes ---------- */
+
+.note {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
+  min-width: 160px;
+  min-height: 120px;
+}
+.note.dragging { box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28); opacity: 0.95; }
+
+.note--yellow { background: #fff9b1; }
+.note--pink   { background: #ffd5e1; }
+.note--blue   { background: #cfe8ff; }
+.note--green  { background: #d7f5d3; }
+.note--purple { background: #e6dcff; }
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  cursor: grab;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px 4px 0 0;
+  touch-action: none;
+}
+.note-head:active { cursor: grabbing; }
+
+.stack-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.drag-space { flex: 1; }
+
+.note-head button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: rgba(0, 0, 0, 0.45);
+  border-radius: 3px;
+}
+.note-head button:hover { background: rgba(0, 0, 0, 0.10); color: rgba(0, 0, 0, 0.75); }
+
+.color-btn { font-size: 11px; }
+
+.note-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.note-render {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: text;
+  word-wrap: break-word;
+}
+.note-render:empty::before,
+.note-render.placeholder::before {
+  content: "Click to write markdown…";
+  color: rgba(0, 0, 0, 0.35);
+  font-style: italic;
+}
+.note-render h1, .note-render h2, .note-render h3 { margin: 0.3em 0 0.2em; line-height: 1.2; }
+.note-render h1 { font-size: 1.35em; }
+.note-render h2 { font-size: 1.2em; }
+.note-render h3 { font-size: 1.05em; }
+.note-render p { margin: 0.35em 0; }
+.note-render ul, .note-render ol { margin: 0.3em 0; padding-left: 1.4em; }
+.note-render code {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 0.9em;
+}
+.note-render pre {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+}
+.note-render pre code { background: none; padding: 0; }
+.note-render blockquote {
+  margin: 0.35em 0;
+  padding-left: 8px;
+  border-left: 3px solid rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.6);
+}
+.note-render table { border-collapse: collapse; font-size: 0.95em; }
+.note-render th, .note-render td { border: 1px solid rgba(0, 0, 0, 0.2); padding: 2px 6px; }
+.note-render a { color: #1a63b8; }
+.note-render img { max-width: 100%; }
+
+.note-edit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  resize: none;
+  background: rgba(255, 255, 255, 0.45);
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  outline: 2px solid rgba(0, 0, 0, 0.25);
+  outline-offset: -2px;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 55%, rgba(0, 0, 0, 0.25) 55%, rgba(0, 0, 0, 0.25) 65%,
+      transparent 65%, transparent 75%, rgba(0, 0, 0, 0.25) 75%, rgba(0, 0, 0, 0.25) 85%, transparent 85%);
+  border-radius: 0 0 4px 0;
+}

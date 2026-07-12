@@ -1,0 +1,12 @@
+{
+  "name": "md-note",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown sticky notes on a desktop canvas, persisted to the local filesystem",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
