@@ -23,6 +23,8 @@ Two pieces:
 - **`server.js`** — zero-dependency Node HTTP server. Serves `public/` statically and exposes a JSON API under `/api/desktops`. It exists solely because a static page cannot write to the local filesystem portably; all app logic lives client-side.
 - **`public/app.js`** — the entire frontend (vanilla JS, no framework). `index.html` is a static shell; `app.js` owns all state and DOM.
 
+The server is optional: all persistence in `app.js` goes through a `store` adapter picked once at boot. If `api/desktops` (relative path — keeps subpath hosting working) answers with JSON, `serverStore` wraps the API; otherwise (static hosting, GitHub Pages via `.github/workflows/pages.yml`, or `file://`) `browserStore` keeps the same desktop objects in localStorage under `md-note:desk:<id>`. Both implement `list/create/load/save/remove/saveOnUnload` — route any new persistence through the adapter, not `fetch`. Menu-bar Export/Import (`{version: 1, desktops: [...]}` JSON) moves data between modes; import always adds (ids re-uniqued), never overwrites.
+
 ### On-disk data model (the core contract)
 
 ```

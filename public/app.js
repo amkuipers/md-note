@@ -104,7 +104,15 @@ const noteEls = new Map(); // note id -> element
 const uid = (prefix) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-/* ---------------- persistence ---------------- */
+/* ---------------- persistence ----------------
+ * All storage goes through `store`, picked once at boot:
+ *  - serverStore  → the Node server's /api/desktops (data/ folder on disk)
+ *  - browserStore → localStorage, used when no API answers (static hosting,
+ *    GitHub Pages, or opening index.html straight from a folder)
+ * Both expose: list, create, load, save, remove, saveOnUnload.
+ */
+
+let store = null;
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -113,6 +121,113 @@ async function api(path, opts = {}) {
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
   return res.json();
+}
+
+// paths are relative so the app also works when served under a subpath
+const serverStore = {
+  label: 'data/ folder (server)',
+  list: () => api('api/desktops'),
+  create: (name, theme) =>
+    api('api/desktops', { method: 'POST', body: JSON.stringify({ name, theme }) }),
+  load: (id) => api(`api/desktops/${id}`),
+  save: (id, d) => api(`api/desktops/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+  remove: (id) => api(`api/desktops/${id}`, { method: 'DELETE' }),
+  // best-effort save when the tab closes mid-debounce (POST = PUT alias)
+  saveOnUnload(d) {
+    fetch(`api/desktops/${d.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+      keepalive: true,
+    });
+  },
+};
+
+const LS_PREFIX = 'md-note:desk:';
+
+// mirrors server.js slugify so ids look the same in both modes
+function slugify(name) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'desktop'
+  );
+}
+
+const browserStore = {
+  label: 'this browser (localStorage)',
+  ids() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith(LS_PREFIX)) out.push(k.slice(LS_PREFIX.length));
+    }
+    return out;
+  },
+  read(id) {
+    const raw = localStorage.getItem(LS_PREFIX + id);
+    if (raw === null) throw new Error('desktop not found');
+    return { ...JSON.parse(raw), id };
+  },
+  write(id, d) {
+    localStorage.setItem(
+      LS_PREFIX + id,
+      JSON.stringify({ name: d.name, theme: d.theme, notes: d.notes || [] })
+    );
+  },
+  async list() {
+    return this.ids()
+      .map((id) => {
+        try {
+          const d = this.read(id);
+          return { id, name: d.name, theme: d.theme, noteCount: (d.notes || []).length };
+        } catch {
+          return null; // skip corrupt entries
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+  async create(name, theme) {
+    name = String(name || '').trim();
+    if (!name) throw new Error('name is required');
+    let id = slugify(name);
+    for (let n = 2; localStorage.getItem(LS_PREFIX + id) !== null; n++)
+      id = `${slugify(name)}-${n}`;
+    const d = { id, name, theme: String(theme || 'free'), notes: [] };
+    this.write(id, d);
+    return d;
+  },
+  async load(id) {
+    return this.read(id);
+  },
+  async save(id, d) {
+    this.write(id, d);
+    return { ok: true };
+  },
+  async remove(id) {
+    localStorage.removeItem(LS_PREFIX + id);
+    return { ok: true };
+  },
+  // localStorage is synchronous, so an unload save is just a save
+  saveOnUnload(d) {
+    this.write(d.id, d);
+  },
+};
+
+async function pickStore() {
+  if (location.protocol !== 'file:') {
+    try {
+      const res = await fetch('api/desktops');
+      if (res.ok && (res.headers.get('content-type') || '').includes('json'))
+        return serverStore;
+    } catch {
+      /* no server → fall through to browser storage */
+    }
+  }
+  return browserStore;
 }
 
 function markDirty() {
@@ -127,7 +242,7 @@ async function flushSave() {
   clearTimeout(saveTimer);
   dirty = false;
   try {
-    await api(`/api/desktops/${desk.id}`, { method: 'PUT', body: JSON.stringify(desk) });
+    await store.save(desk.id, desk);
     $('#save-indicator').className = '';
   } catch (err) {
     dirty = true;
@@ -136,22 +251,14 @@ async function flushSave() {
   }
 }
 
-// best-effort save when the tab closes mid-debounce
 window.addEventListener('beforeunload', () => {
-  if (dirty && desk) {
-    fetch(`/api/desktops/${desk.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(desk),
-      keepalive: true,
-    });
-  }
+  if (dirty && desk) store.saveOnUnload(desk);
 });
 
 /* ---------------- desktops / sidebar ---------------- */
 
 async function refreshDesktopList() {
-  desktops = await api('/api/desktops');
+  desktops = await store.list();
   const ul = $('#desktop-list');
   ul.innerHTML = '';
   for (const d of desktops) {
@@ -176,7 +283,7 @@ async function refreshDesktopList() {
 
 async function deleteDesktopById(id, name) {
   if (!confirm(`Delete desktop "${name}" and all its notes?`)) return;
-  await api(`/api/desktops/${id}`, { method: 'DELETE' });
+  await store.remove(id);
   if (desk && desk.id === id) {
     dirty = false; // discard pending saves for the deleted desktop
     desk = null;
@@ -189,10 +296,7 @@ async function createNewDesktop() {
   const base = 'Untitled';
   const taken = desktops.filter((d) => d.name.startsWith(base)).length;
   const name = taken ? `${base} ${taken + 1}` : base;
-  const d = await api('/api/desktops', {
-    method: 'POST',
-    body: JSON.stringify({ name, theme: 'free' }),
-  });
+  const d = await store.create(name, 'free');
   await switchDesktop(d.id);
   $('#desk-name').focus();
   $('#desk-name').select();
@@ -201,7 +305,7 @@ async function createNewDesktop() {
 async function switchDesktop(id) {
   if (desk && desk.id === id) return;
   await flushSave();
-  desk = await api(`/api/desktops/${id}`);
+  desk = await store.load(id);
   localStorage.setItem('md-note:last-desktop', id);
   zCounter = Math.max(1, ...desk.notes.map((n) => n.z || 1)) + 1;
   renderDesktop();
@@ -209,17 +313,56 @@ async function switchDesktop(id) {
 }
 
 async function loadInitialDesktop() {
-  desktops = await api('/api/desktops');
+  desktops = await store.list();
   if (desktops.length === 0) {
-    const d = await api('/api/desktops', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'My Desktop', theme: 'free' }),
-    });
+    const d = await store.create('My Desktop', 'free');
     desktops = [d];
   }
   const last = localStorage.getItem('md-note:last-desktop');
   const target = desktops.find((d) => d.id === last) || desktops[0];
   await switchDesktop(target.id);
+}
+
+/* ---------------- export / import ---------------- */
+
+async function exportAll() {
+  await flushSave();
+  const list = await store.list();
+  const desktopsFull = [];
+  for (const d of list) desktopsFull.push(await store.load(d.id));
+  const blob = new Blob([JSON.stringify({ version: 1, desktops: desktopsFull }, null, 2)], {
+    type: 'application/json',
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'md-note-export.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// import adds desktops, never overwrites: create() uniques clashing ids
+async function importFile(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    alert('Not a valid JSON file.');
+    return;
+  }
+  const list = Array.isArray(data) ? data : data.desktops;
+  if (!Array.isArray(list)) {
+    alert('Not an md-note export (expected { desktops: [...] }).');
+    return;
+  }
+  let imported = 0;
+  for (const d of list) {
+    if (!d || typeof d.name !== 'string' || !Array.isArray(d.notes)) continue;
+    const created = await store.create(d.name, d.theme || 'free');
+    await store.save(created.id, { name: d.name, theme: d.theme || 'free', notes: d.notes });
+    imported++;
+  }
+  await refreshDesktopList();
+  alert(imported ? `Imported ${imported} desktop(s).` : 'No desktops found in that file.');
 }
 
 /* ---------------- zones ---------------- */
@@ -604,6 +747,18 @@ for (const [key, t] of Object.entries(THEMES)) {
   $('#desk-theme').appendChild(opt);
 }
 
+// export / import
+$('#export-btn').addEventListener('click', () => {
+  exportAll().catch((err) => alert(`Export failed: ${err.message}`));
+});
+const importInput = $('#import-file');
+$('#import-btn').addEventListener('click', () => importInput.click());
+importInput.addEventListener('change', async () => {
+  const file = importInput.files[0];
+  importInput.value = '';
+  if (file) await importFile(file).catch((err) => alert(`Import failed: ${err.message}`));
+});
+
 // help menu
 const helpDropdown = $('#help-menu .dropdown');
 $('#help-btn').addEventListener('click', (e) => {
@@ -620,6 +775,10 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------------- boot ---------------- */
 
-loadInitialDesktop().catch((err) => {
-  document.body.innerHTML = `<pre style="padding:2em">Failed to load: ${err.message}\n\nIs the server running? Start it with: node server.js</pre>`;
+(async () => {
+  store = await pickStore();
+  $('#save-indicator').title = `save state — saving to ${store.label}`;
+  await loadInitialDesktop();
+})().catch((err) => {
+  document.body.innerHTML = `<pre style="padding:2em">Failed to load: ${err.message}</pre>`;
 });

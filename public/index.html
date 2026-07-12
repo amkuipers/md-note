@@ -28,6 +28,9 @@
         <button id="add-note-btn" type="button" title="Add a note">＋ Note</button>
         <button id="add-desktop-btn" type="button" title="Create a new desktop">＋ Desktop</button>
         <button id="del-desktop-btn" type="button" title="Delete this desktop">🗑</button>
+        <button id="export-btn" type="button" title="Export all desktops to a JSON file">⬇ Export</button>
+        <button id="import-btn" type="button" title="Import desktops from an md-note export">⬆ Import</button>
+        <input id="import-file" type="file" accept=".json,application/json" hidden />
         <div class="menu" id="help-menu">
           <button type="button" id="help-btn" title="Help">?</button>
           <div class="dropdown" hidden>
@@ -36,7 +39,11 @@
             <p><b>Shift-drag</b> pulls a note out of its stack; click the <b>count badge</b> to unstack all.</p>
             <p><b>Click</b> a note's body to edit markdown; click elsewhere to render.</p>
             <p><b>Click</b> the desktop name to rename it; use the theme selector to relayout.</p>
-            <p>Notes are saved as <code>.md</code> files in the <code>data/</code> folder.</p>
+            <p>With the Node server, notes are saved as <code>.md</code> files in the <code>data/</code>
+              folder. Without it (static hosting, GitHub Pages, or opening <code>index.html</code>
+              directly), they are saved in this browser's localStorage.</p>
+            <p><b>Export</b> downloads all desktops as one JSON file; <b>Import</b> adds them back —
+              use it to back up or move notes between browsers.</p>
           </div>
         </div>
       </div>
