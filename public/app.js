@@ -110,9 +110,63 @@ const uid = (prefix) =>
  *  - browserStore → localStorage, used when no API answers (static hosting,
  *    GitHub Pages, or opening index.html straight from a folder)
  * Both expose: list, create, load, save, remove, saveOnUnload.
+ *
+ * File format version 2: on disk, note x/y/w/h are fractions (0..1) of the
+ * canvas size, so a layout made on a 4K screen keeps its shape on a smaller
+ * one. In memory the app works in pixels: normalizeDesk() converts on load
+ * (and migrates version-1 pixel files), serializeDesk() converts on save —
+ * every store.save/saveOnUnload call must go through serializeDesk().
  */
 
 let store = null;
+
+const FORMAT_VERSION = 2;
+
+function canvasSize() {
+  return { cw: Math.max(1, canvas.clientWidth), ch: Math.max(1, canvas.clientHeight) };
+}
+
+const frac = (v) => +v.toFixed(4);
+
+function normalizeDesk(d) {
+  const { cw, ch } = canvasSize();
+  const notes = (Array.isArray(d.notes) ? d.notes : []).map((n) => {
+    if (d.version === FORMAT_VERSION) {
+      return {
+        ...n,
+        x: Math.round((n.x || 0) * cw),
+        y: Math.round((n.y || 0) * ch),
+        w: Math.round((n.w || 0) * cw) || DEFAULT_NOTE.w,
+        h: Math.round((n.h || 0) * ch) || DEFAULT_NOTE.h,
+      };
+    }
+    // version 1 stored pixels from an unknown screen — clamp into this one
+    const w = Math.min(n.w || DEFAULT_NOTE.w, cw);
+    const h = Math.min(n.h || DEFAULT_NOTE.h, ch);
+    const x = Math.min(Math.max(0, n.x || 0), cw - w);
+    const y = Math.min(Math.max(0, n.y || 0), ch - h);
+    // clamping may have shifted the note, so re-derive its zone
+    return { ...n, x, y, w, h, zone: zoneAt(x + w / 2, y + h / 2, d.theme) };
+  });
+  return { ...d, version: FORMAT_VERSION, notes };
+}
+
+function serializeDesk(d) {
+  const { cw, ch } = canvasSize();
+  return {
+    id: d.id,
+    version: FORMAT_VERSION,
+    name: d.name,
+    theme: d.theme,
+    notes: (d.notes || []).map((n) => ({
+      ...n,
+      x: frac(n.x / cw),
+      y: frac(n.y / ch),
+      w: frac(n.w / cw),
+      h: frac(n.h / ch),
+    })),
+  };
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -174,7 +228,8 @@ const browserStore = {
   write(id, d) {
     localStorage.setItem(
       LS_PREFIX + id,
-      JSON.stringify({ name: d.name, theme: d.theme, notes: d.notes || [] })
+      // no version field (pre-v2 entry) → normalizeDesk treats it as v1 pixels
+      JSON.stringify({ version: d.version, name: d.name, theme: d.theme, notes: d.notes || [] })
     );
   },
   async list() {
@@ -196,7 +251,7 @@ const browserStore = {
     let id = slugify(name);
     for (let n = 2; localStorage.getItem(LS_PREFIX + id) !== null; n++)
       id = `${slugify(name)}-${n}`;
-    const d = { id, name, theme: String(theme || 'free'), notes: [] };
+    const d = { id, version: FORMAT_VERSION, name, theme: String(theme || 'free'), notes: [] };
     this.write(id, d);
     return d;
   },
@@ -242,7 +297,7 @@ async function flushSave() {
   clearTimeout(saveTimer);
   dirty = false;
   try {
-    await store.save(desk.id, desk);
+    await store.save(desk.id, serializeDesk(desk));
     $('#save-indicator').className = '';
   } catch (err) {
     dirty = true;
@@ -252,7 +307,7 @@ async function flushSave() {
 }
 
 window.addEventListener('beforeunload', () => {
-  if (dirty && desk) store.saveOnUnload(desk);
+  if (dirty && desk) store.saveOnUnload(serializeDesk(desk));
 });
 
 /* ---------------- desktops / sidebar ---------------- */
@@ -263,6 +318,7 @@ async function refreshDesktopList() {
   ul.innerHTML = '';
   for (const d of desktops) {
     const li = document.createElement('li');
+    li.dataset.deskId = d.id;
     li.classList.toggle('active', desk && d.id === desk.id);
     li.innerHTML = `
       <div class="desk-row">
@@ -305,7 +361,7 @@ async function createNewDesktop() {
 async function switchDesktop(id) {
   if (desk && desk.id === id) return;
   await flushSave();
-  desk = await store.load(id);
+  desk = normalizeDesk(await store.load(id));
   localStorage.setItem('md-note:last-desktop', id);
   zCounter = Math.max(1, ...desk.notes.map((n) => n.z || 1)) + 1;
   renderDesktop();
@@ -329,8 +385,9 @@ async function exportAll() {
   await flushSave();
   const list = await store.list();
   const desktopsFull = [];
-  for (const d of list) desktopsFull.push(await store.load(d.id));
-  const blob = new Blob([JSON.stringify({ version: 1, desktops: desktopsFull }, null, 2)], {
+  // normalize→serialize migrates any still-v1 desktop to v2 fractions
+  for (const d of list) desktopsFull.push(serializeDesk(normalizeDesk(await store.load(d.id))));
+  const blob = new Blob([JSON.stringify({ version: FORMAT_VERSION, desktops: desktopsFull }, null, 2)], {
     type: 'application/json',
   });
   const a = document.createElement('a');
@@ -358,17 +415,56 @@ async function importFile(file) {
   for (const d of list) {
     if (!d || typeof d.name !== 'string' || !Array.isArray(d.notes)) continue;
     const created = await store.create(d.name, d.theme || 'free');
-    await store.save(created.id, { name: d.name, theme: d.theme || 'free', notes: d.notes });
+    // accepts v1 (pixel) and v2 (fractional) exports alike
+    const v2 = serializeDesk(normalizeDesk({ ...d, theme: d.theme || 'free' }));
+    await store.save(created.id, { ...v2, id: created.id });
     imported++;
   }
   await refreshDesktopList();
   alert(imported ? `Imported ${imported} desktop(s).` : 'No desktops found in that file.');
 }
 
+/* ---------------- cross-desktop move ---------------- */
+
+// the sidebar desktop entry under the pointer, if it isn't the active desktop
+// (rect check instead of elementFromPoint: the dragged note follows the cursor)
+function sidebarDropTarget(clientX, clientY) {
+  for (const li of $('#desktop-list').children) {
+    const r = li.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom)
+      return li.dataset.deskId !== desk.id ? li : null;
+  }
+  return null;
+}
+
+// destination is saved before the source forgets the notes, so a failure
+// mid-move can at worst duplicate a note, never lose one
+async function moveGroupToDesktop(group, targetId) {
+  const target = normalizeDesk(await store.load(targetId));
+  let z = Math.max(0, ...target.notes.map((n) => n.z || 0));
+  const moved = group
+    .slice()
+    .sort((a, b) => (a.z || 0) - (b.z || 0))
+    .map((n) => ({ ...n, z: ++z, zone: zoneAt(n.x + n.w / 2, n.y + n.h / 2, target.theme) }));
+  target.notes.push(...moved);
+  await store.save(targetId, serializeDesk(target));
+
+  const ids = new Set(group.map((n) => n.id));
+  desk.notes = desk.notes.filter((n) => !ids.has(n.id));
+  for (const id of ids) {
+    noteEls.get(id)?.remove();
+    noteEls.delete(id);
+  }
+  dissolveTinyStacks();
+  updateStackBadges();
+  markDirty();
+  await flushSave();
+}
+
 /* ---------------- zones ---------------- */
 
-function themeZones() {
-  return (THEMES[desk?.theme] || THEMES.free).zones;
+function themeZones(theme = desk?.theme) {
+  return (THEMES[theme] || THEMES.free).zones;
 }
 
 function renderZones() {
@@ -387,9 +483,9 @@ function renderZones() {
   }
 }
 
-function zoneAt(px, py) {
+function zoneAt(px, py, theme = desk?.theme) {
   const { clientWidth: cw, clientHeight: ch } = canvas;
-  for (const z of themeZones()) {
+  for (const z of themeZones(theme)) {
     if (px >= z.x * cw && px < (z.x + z.w) * cw && py >= z.y * ch && py < (z.y + z.h) * ch)
       return z.id;
   }
@@ -601,6 +697,7 @@ function onDragStart(e, note) {
   const el = noteEls.get(note.id);
   el.classList.add('dragging');
   el.setPointerCapture(e.pointerId);
+  let dropLi = null; // sidebar desktop currently hovered as a move target
 
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
@@ -611,14 +708,49 @@ function onDragStart(e, note) {
       updateNoteEl(p.n);
     }
     highlightZone(zoneAt(note.x + note.w / 2, note.y + note.h / 2));
+    const li = sidebarDropTarget(ev.clientX, ev.clientY);
+    if (li !== dropLi) {
+      dropLi?.classList.remove('drop-target');
+      dropLi = li;
+      dropLi?.classList.add('drop-target');
+    }
   };
 
-  const onUp = () => {
+  const onUp = (ev) => {
     el.classList.remove('dragging');
     el.removeEventListener('pointermove', onMove);
     el.removeEventListener('pointerup', onUp);
     el.removeEventListener('pointercancel', onUp);
     highlightZone(null);
+    dropLi?.classList.remove('drop-target');
+
+    // dropped on another desktop in the sidebar → move the whole group there,
+    // keeping the spot it occupied before the drag started
+    if (dropLi && ev.type === 'pointerup') {
+      const targetId = dropLi.dataset.deskId;
+      for (const p of startPoses) {
+        p.n.x = p.x;
+        p.n.y = p.y;
+        updateNoteEl(p.n);
+      }
+      moveGroupToDesktop(group, targetId).catch((err) => alert(`Move failed: ${err.message}`));
+      return;
+    }
+
+    // dropped outside the canvas (sidebar background, menu bar) → snap back
+    const rect = canvas.getBoundingClientRect();
+    if (
+      ev.clientX < rect.left || ev.clientX > rect.right ||
+      ev.clientY < rect.top || ev.clientY > rect.bottom
+    ) {
+      for (const p of startPoses) {
+        p.n.x = p.x;
+        p.n.y = p.y;
+        updateNoteEl(p.n);
+      }
+      updateStackBadges();
+      return;
+    }
 
     // stack if dropped onto a note outside the dragged group
     const groupIds = new Set(group.map((n) => n.id));
@@ -676,7 +808,29 @@ function onResizeStart(e, note) {
 
 /* ---------------- desktop rendering ---------------- */
 
+let lastCanvas = null; // canvas size the in-memory pixel coordinates refer to
+
+// keep the fractional layout: scale pixel coordinates when the window resizes
+function rescaleToCanvas() {
+  if (!desk) return;
+  const { cw, ch } = canvasSize();
+  if (lastCanvas && (lastCanvas.cw !== cw || lastCanvas.ch !== ch)) {
+    const sx = cw / lastCanvas.cw;
+    const sy = ch / lastCanvas.ch;
+    for (const n of desk.notes) {
+      n.x = Math.round(n.x * sx);
+      n.y = Math.round(n.y * sy);
+      n.w = Math.round(n.w * sx);
+      n.h = Math.round(n.h * sy);
+      updateNoteEl(n);
+    }
+  }
+  lastCanvas = { cw, ch };
+}
+window.addEventListener('resize', rescaleToCanvas);
+
 function renderDesktop() {
+  lastCanvas = canvasSize();
   for (const el of noteEls.values()) el.remove();
   noteEls.clear();
   renderZones();

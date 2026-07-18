@@ -112,7 +112,7 @@ async function createDesktop(body) {
   let id = slugify(name);
   for (let n = 2; fs.existsSync(desktopDir(id)); n++) id = `${slugify(name)}-${n}`;
   await fsp.mkdir(path.join(desktopDir(id), 'notes'), { recursive: true });
-  const meta = { name, theme, notes: [] };
+  const meta = { version: 2, name, theme, notes: [] };
   await fsp.writeFile(
     path.join(desktopDir(id), 'desktop.json'),
     JSON.stringify(meta, null, 2)
@@ -135,7 +135,8 @@ async function getDesktop(id) {
     }
     notes.push({ ...n, content });
   }
-  return { id, name: meta.name, theme: meta.theme, notes };
+  // version absent on v1 files — the client migrates those on load
+  return { id, version: meta.version, name: meta.name, theme: meta.theme, notes };
 }
 
 async function putDesktop(id, body) {
@@ -160,6 +161,7 @@ async function putDesktop(id, body) {
   }
 
   const meta = {
+    version: Number(body.version) || 1,
     name: String(body.name || id),
     theme: String(body.theme || 'free'),
     notes: metaNotes,

@@ -74,6 +74,11 @@ html, body {
 }
 #desktop-list li:hover { background: rgba(255, 255, 255, 0.07); }
 #desktop-list li.active { background: rgba(255, 255, 255, 0.14); }
+#desktop-list li.drop-target {
+  background: rgba(255, 184, 77, 0.25);
+  outline: 1.5px dashed var(--accent);
+  outline-offset: -1.5px;
+}
 
 #desktop-list .desk-row {
   display: flex;

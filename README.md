@@ -67,6 +67,16 @@ In this mode your notes live in that browser's localStorage for that site only �
 - **Shift-drag** pulls a single note out of its stack.
 - The top note of a stack shows a **count badge** — click it to unstack all notes at once.
 
+### Moving notes between desktops
+
+- **Drag a note onto a desktop in the sidebar** to move it to that desktop. The target row highlights while you hover it; the note keeps its position and lands in whatever theme zone sits there on the target desktop.
+- Dragging a **stack** onto a sidebar desktop moves the whole stack in one go.
+- Dropping a note on the sidebar background (not on a desktop) snaps it back to where it was.
+
+### Screen sizes
+
+Note positions and sizes are stored as **fractions of the canvas**, not pixels — a layout arranged on a 4K monitor keeps its shape on a 2K laptop (and live window resizes rescale the notes as you watch). Because theme zones are fractional too, every note stays in its zone regardless of resolution.
+
 A **? help menu** in the menu bar summarizes these gestures in the app itself.
 
 ## Data format
@@ -89,13 +99,14 @@ Content and layout are deliberately kept apart:
 
   ```json
   {
+    "version": 2,
     "name": "Weekly planning",
     "theme": "kanban",
     "notes": [
       {
         "id": "n-abc123",
-        "x": 120, "y": 80,
-        "w": 220, "h": 180,
+        "x": 0.0625, "y": 0.0833,
+        "w": 0.1146, "h": 0.1875,
         "z": 3,
         "color": "yellow",
         "stackId": "s-xyz789",
@@ -106,6 +117,8 @@ Content and layout are deliberately kept apart:
   ```
 
   Per note: position (`x`, `y`), size (`w`, `h`), stacking order (`z`), `color`, the `stackId` shared by notes stacked together (`null` when unstacked), and the theme `zone` the note was last dropped in.
+
+  **Format versions.** In version 2 (current), `x`/`y`/`w`/`h` are fractions (0–1) of the canvas width and height, which is what makes layouts independent of screen resolution. Version 1 files — no `version` field, coordinates in pixels — still load: the app converts them using the current window size (clamping anything off-screen back into view) and writes them back as version 2 on the next save. There is nothing to migrate by hand.
 
 The server exposes this same model as a small JSON API under `/api/desktops` (list/create desktops; get/save/delete a desktop with its notes inlined), which is what the frontend talks to.
 
