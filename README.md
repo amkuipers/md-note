@@ -73,6 +73,20 @@ In this mode your notes live in that browser's localStorage for that site only �
 - Dragging a **stack** onto a sidebar desktop moves the whole stack in one go.
 - Dropping a note on the sidebar background (not on a desktop) snaps it back to where it was.
 
+### Outline view, copying and printing
+
+The **Board / Outline** toggle in the menu bar switches between two views of the same desktop:
+
+- **Board** — the sticky-note canvas you edit on.
+- **Outline** — a read-only text document: the desktop name, each theme box name as a heading, and under it the rendered markdown of every note in that box (top-to-bottom, left-to-right; notes outside any box appear under *Unassigned*). It is text-complete — empty notes and empty boxes are listed too — and fully selectable. The **⧉ Copy** button copies the whole outline to the clipboard as plain markdown for pasting into other applications.
+
+**Printing** (⌘P) prints whichever view is active, always without the sidebar and toolbar:
+
+- **Board** prints as a landscape snapshot: white page (no dot grid, no zone fill — only the dashed box borders and labels, to save ink), sticky notes keep their colors, and the whole board is scaled to fit one sheet.
+- **Outline** prints portrait as a compact text document grouped by box names — smaller type, page breaks avoided inside a note. No colors needed.
+
+> Safari ignores the CSS that requests landscape paper for board printing — pick **Landscape** in Safari's print dialog yourself. Chrome and Edge preselect it.
+
 ### Screen sizes
 
 Note positions and sizes are stored as **fractions of the canvas**, not pixels — a layout arranged on a 4K monitor keeps its shape on a 2K laptop (and live window resizes rescale the notes as you watch). Because theme zones are fractional too, every note stays in its zone regardless of resolution.

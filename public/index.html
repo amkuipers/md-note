@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>md-note</title>
   <link rel="stylesheet" href="style.css" />
+  <style id="print-page-style"></style>
 </head>
 <body>
   <div id="app">
@@ -24,6 +25,12 @@
         <input id="desk-name" type="text" spellcheck="false" autocomplete="off"
           title="Desktop name — click to rename" />
         <select id="desk-theme" title="Change theme"></select>
+        <div id="view-toggle" role="group" title="Switch between the sticky-note board and a printable text outline">
+          <button id="view-board-btn" type="button">Board</button>
+          <button id="view-outline-btn" type="button">Outline</button>
+        </div>
+        <button id="copy-outline-btn" type="button"
+          title="Copy the whole outline as markdown text">⧉ Copy</button>
         <span class="menubar-spacer"></span>
         <button id="add-note-btn" type="button" title="Add a note">＋ Note</button>
         <button id="add-desktop-btn" type="button" title="Create a new desktop">＋ Desktop</button>
@@ -42,6 +49,10 @@
               shape on any screen size.</p>
             <p><b>Click</b> a note's body to edit markdown; click elsewhere to render.</p>
             <p><b>Click</b> the desktop name to rename it; use the theme selector to relayout.</p>
+            <p><b>Board / Outline</b> switches views: the outline lists every note's text grouped
+              by theme box — select it, or use <b>⧉ Copy</b> to copy it all as markdown.</p>
+            <p><b>Printing</b> (⌘P) prints the current view without sidebar or toolbar: the board
+              as a landscape sheet with colored notes, the outline as a compact text document.</p>
             <p>With the Node server, notes are saved as <code>.md</code> files in the <code>data/</code>
               folder. Without it (static hosting, GitHub Pages, or opening <code>index.html</code>
               directly), they are saved in this browser's localStorage.</p>
@@ -53,6 +64,7 @@
       <div id="canvas">
         <div id="zones"></div>
       </div>
+      <div id="outline"></div>
     </main>
   </div>
 

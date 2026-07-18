@@ -170,6 +170,29 @@ html, body {
 
 .menubar-spacer { flex: 1; }
 
+#view-toggle {
+  display: flex;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+#view-toggle button {
+  border: none;
+  background: #fff;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2b2f3a;
+}
+#view-toggle button + button { border-left: 1px solid rgba(0, 0, 0, 0.15); }
+#view-toggle button:hover { background: #fff8ec; }
+#view-toggle button.active {
+  background: #ffedcc;
+  color: #7a4c00;
+  font-weight: 600;
+}
+body:not(.view-outline) #copy-outline-btn { display: none; }
+
 #menubar > button {
   border: 1px solid rgba(0, 0, 0, 0.15);
   background: #fff;
@@ -383,6 +406,102 @@ html, body {
   line-height: 1.5;
   outline: 2px solid rgba(0, 0, 0, 0.25);
   outline-offset: -2px;
+}
+
+/* ---------- outline view ---------- */
+
+#outline {
+  position: absolute;
+  inset: 46px 0 0 0;
+  overflow-y: auto;
+  background: #fff;
+  padding: 30px 44px 60px;
+  display: none;
+}
+body.view-outline #outline { display: block; }
+/* visibility (not display): canvas must keep its size — fractional coords
+   and saves are computed against it even while the outline is shown */
+body.view-outline #canvas { visibility: hidden; }
+
+#outline h1 { font-size: 22px; margin: 0 0 2px; }
+.outline-sub { color: #888; font-size: 12px; margin: 0 0 20px; }
+.outline-group { max-width: 780px; margin: 0 0 20px; }
+.outline-group h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  padding-bottom: 4px;
+  margin: 18px 0 4px;
+}
+.outline-note { padding: 7px 0; font-size: 13px; line-height: 1.5; }
+.outline-note + .outline-note { border-top: 1px dashed rgba(0, 0, 0, 0.18); }
+.outline-empty { color: #999; font-style: italic; font-size: 12px; margin: 4px 0; }
+.outline-note h1, .outline-note h2, .outline-note h3 { margin: 0.3em 0 0.2em; line-height: 1.25; }
+.outline-note h1 { font-size: 1.25em; }
+.outline-note h2 { font-size: 1.1em; }
+.outline-note h3 { font-size: 1em; }
+.outline-note p { margin: 0.35em 0; }
+.outline-note ul, .outline-note ol { margin: 0.3em 0; padding-left: 1.4em; }
+.outline-note code {
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 0.9em;
+}
+.outline-note pre {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+}
+.outline-note pre code { background: none; padding: 0; }
+.outline-note blockquote {
+  margin: 0.35em 0;
+  padding-left: 8px;
+  border-left: 3px solid rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.6);
+}
+.outline-note table { border-collapse: collapse; font-size: 0.95em; }
+.outline-note th, .outline-note td { border: 1px solid rgba(0, 0, 0, 0.25); padding: 2px 6px; }
+.outline-note img { max-width: 100%; }
+
+/* ---------- print ---------- */
+
+@media print {
+  #sidebar, #menubar { display: none !important; }
+  #app { display: block; height: auto; overflow: visible; }
+  #canvas-wrap { position: static; overflow: visible; }
+
+  /* board: landscape snapshot — white page, no dot grid or zone fill,
+     sticky notes keep their color (beforeprint scales it onto one sheet) */
+  body:not(.view-outline) #canvas {
+    position: static;
+    background-color: #fff;
+    background-image: none;
+  }
+  body:not(.view-outline) .zone { background: none !important; }
+  .note {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none;
+  }
+  .color-btn, .del-btn, .resize-handle { display: none; }
+
+  /* outline: a flowing text document, compact type, grouped by box name */
+  body.view-outline #canvas { display: none; }
+  body.view-outline #outline {
+    display: block;
+    position: static;
+    overflow: visible;
+    padding: 0;
+  }
+  body.view-outline #outline h1 { font-size: 16pt; }
+  .outline-group { max-width: none; }
+  .outline-group h2 { break-after: avoid-page; }
+  .outline-note { font-size: 9.5pt; line-height: 1.4; break-inside: avoid-page; }
 }
 
 .resize-handle {

@@ -461,6 +461,139 @@ async function moveGroupToDesktop(group, targetId) {
   await flushSave();
 }
 
+/* ---------------- view modes: board / outline ----------------
+ * Outline is a read-only, text-complete rendering of the desktop: theme box
+ * names as headings, each box's notes as markdown, for printing and copying.
+ * The board canvas stays visibility:hidden (not display:none) in outline
+ * mode so canvasSize() keeps returning real dimensions for the fractional
+ * save format; only print CSS removes it entirely.
+ */
+
+let viewMode = 'board';
+
+const PAGE_ORIENTATION = {
+  board: '@page { size: landscape; margin: 10mm; }',
+  outline: '@page { size: portrait; margin: 12mm; }',
+};
+
+function setViewMode(mode) {
+  viewMode = mode === 'outline' ? 'outline' : 'board';
+  localStorage.setItem('md-note:view', viewMode);
+  document.body.classList.toggle('view-outline', viewMode === 'outline');
+  $('#view-board-btn').classList.toggle('active', viewMode === 'board');
+  $('#view-outline-btn').classList.toggle('active', viewMode === 'outline');
+  $('#add-note-btn').disabled = viewMode === 'outline';
+  // Safari ignores @page size; there the print dialog's own orientation wins
+  $('#print-page-style').textContent = PAGE_ORIENTATION[viewMode];
+  if (viewMode === 'outline') renderOutline();
+}
+
+// notes grouped by theme box, boxes in THEMES order, notes in reading order
+function outlineGroups() {
+  const zones = themeZones();
+  const order = (a, b) => a.y - b.y || a.x - b.x;
+  const groups = zones.map((z) => ({
+    label: z.label,
+    notes: desk.notes.filter((n) => n.zone === z.id).sort(order),
+  }));
+  const zoneIds = new Set(zones.map((z) => z.id));
+  const loose = desk.notes.filter((n) => !zoneIds.has(n.zone)).sort(order);
+  if (zones.length === 0) groups.push({ label: '', notes: loose });
+  else if (loose.length) groups.push({ label: 'Unassigned', notes: loose });
+  return groups;
+}
+
+function renderOutline() {
+  const root = $('#outline');
+  root.innerHTML = '';
+  if (!desk) return;
+  const title = document.createElement('h1');
+  title.textContent = desk.name;
+  root.appendChild(title);
+  const sub = document.createElement('p');
+  sub.className = 'outline-sub';
+  sub.textContent = `${(THEMES[desk.theme] || THEMES.free).label} · ${desk.notes.length} note${
+    desk.notes.length === 1 ? '' : 's'
+  }`;
+  root.appendChild(sub);
+  for (const g of outlineGroups()) {
+    const sec = document.createElement('section');
+    sec.className = 'outline-group';
+    if (g.label) {
+      const h = document.createElement('h2');
+      h.textContent = g.label;
+      sec.appendChild(h);
+    }
+    if (g.notes.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'outline-empty';
+      p.textContent = '(no notes)';
+      sec.appendChild(p);
+    }
+    for (const n of g.notes) {
+      const art = document.createElement('article');
+      art.className = 'outline-note';
+      if ((n.content || '').trim()) art.innerHTML = marked.parse(n.content);
+      else {
+        art.classList.add('outline-empty');
+        art.textContent = '(empty note)';
+      }
+      sec.appendChild(art);
+    }
+    root.appendChild(sec);
+  }
+}
+
+// the outline as plain markdown, for pasting into other applications
+function outlineText() {
+  const lines = [`# ${desk.name}`];
+  for (const g of outlineGroups()) {
+    if (g.label) lines.push('', `## ${g.label}`);
+    g.notes.forEach((n, i) => {
+      if (i > 0) lines.push('', '---');
+      lines.push('', (n.content || '').trim() || '*(empty note)*');
+    });
+  }
+  return lines.join('\n') + '\n';
+}
+
+async function copyOutline() {
+  const btn = $('#copy-outline-btn');
+  try {
+    await navigator.clipboard.writeText(outlineText());
+  } catch {
+    // clipboard API unavailable (e.g. some file:// setups) → selection fallback
+    const range = document.createRange();
+    range.selectNodeContents($('#outline'));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+  }
+  const old = btn.textContent;
+  btn.textContent = '✓ Copied';
+  setTimeout(() => (btn.textContent = old), 1200);
+}
+
+// board printing: scale the canvas so the whole board fits one landscape
+// sheet (980×700 css px fits A4 and Letter with margins)
+window.addEventListener('beforeprint', () => {
+  if (viewMode !== 'board' || !desk) return;
+  const { cw, ch } = canvasSize();
+  const s = Math.min(1, 980 / cw, 700 / ch);
+  canvas.style.width = `${cw}px`;
+  canvas.style.height = `${ch}px`;
+  canvas.style.transformOrigin = 'top left';
+  canvas.style.transform = `scale(${s})`;
+});
+window.addEventListener('afterprint', () => {
+  canvas.style.width = '';
+  canvas.style.height = '';
+  canvas.style.transform = '';
+  canvas.style.transformOrigin = '';
+});
+
 /* ---------------- zones ---------------- */
 
 function themeZones(theme = desk?.theme) {
@@ -839,6 +972,7 @@ function renderDesktop() {
   $('#desk-name').value = desk.name;
   $('#desk-theme').value = THEMES[desk.theme] ? desk.theme : 'free';
   $('#save-indicator').className = '';
+  if (viewMode === 'outline') renderOutline();
 }
 
 /* ---------------- global wiring ---------------- */
@@ -874,6 +1008,7 @@ deskNameInput.addEventListener('change', async () => {
     return;
   }
   desk.name = name;
+  if (viewMode === 'outline') renderOutline();
   markDirty();
   await flushSave();
   refreshDesktopList();
@@ -888,6 +1023,7 @@ $('#desk-theme').addEventListener('change', async (e) => {
   desk.theme = e.target.value;
   renderZones();
   for (const n of desk.notes) n.zone = zoneAt(n.x + n.w / 2, n.y + n.h / 2);
+  if (viewMode === 'outline') renderOutline();
   markDirty();
   await flushSave();
   refreshDesktopList();
@@ -913,6 +1049,11 @@ importInput.addEventListener('change', async () => {
   if (file) await importFile(file).catch((err) => alert(`Import failed: ${err.message}`));
 });
 
+// board / outline view toggle
+$('#view-board-btn').addEventListener('click', () => setViewMode('board'));
+$('#view-outline-btn').addEventListener('click', () => setViewMode('outline'));
+$('#copy-outline-btn').addEventListener('click', copyOutline);
+
 // help menu
 const helpDropdown = $('#help-menu .dropdown');
 $('#help-btn').addEventListener('click', (e) => {
@@ -933,6 +1074,7 @@ document.addEventListener('visibilitychange', () => {
   store = await pickStore();
   $('#save-indicator').title = `save state — saving to ${store.label}`;
   await loadInitialDesktop();
+  setViewMode(localStorage.getItem('md-note:view') === 'outline' ? 'outline' : 'board');
 })().catch((err) => {
   document.body.innerHTML = `<pre style="padding:2em">Failed to load: ${err.message}</pre>`;
 });
